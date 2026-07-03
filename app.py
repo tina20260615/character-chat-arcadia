@@ -271,13 +271,23 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&display=swap');
     /* 위쪽 헤더 완전히 없애기 (흰 줄 제거) */
     header[data-testid="stHeader"] {display: none !important;}
-    /* 하단 "Hosted with Streamlit" 문구·메뉴 숨기기 */
+    /* 하단 "Hosted with Streamlit" 문구·메뉴·배지 숨기기 */
     footer {display: none !important;}
     [data-testid="stToolbar"] {display: none !important;}
     [data-testid="stStatusWidget"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    [data-testid="stAppDeployButton"] {display: none !important;}
     .stAppDeployButton {display: none !important;}
+    /* 우측 하단 떠있는 배지들 (스트림릿 로고 등) */
     a[href*="streamlit.io"] {display: none !important;}
+    a[href*="streamlit.app"] {display: none !important;}
+    a[href*="share.streamlit"] {display: none !important;}
     [class*="viewerBadge"] {display: none !important;}
+    [class*="profileContainer"] {display: none !important;}
+    [class*="_profileContainer"] {display: none !important;}
+    [class*="_viewerBadge"] {display: none !important;}
+    [class*="_link_"][href*="streamlit"] {display: none !important;}
+    div[class*="viewerBadge"] {display: none !important;}
     /* 본문 위쪽 여백 줄이기 */
     .stMainBlockContainer, .block-container {
         padding-top: 1.5rem !important;
