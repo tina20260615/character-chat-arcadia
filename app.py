@@ -269,17 +269,28 @@ st.markdown(
     <style>
     /* 예쁜 명조체 폰트 불러오기 */
     @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&display=swap');
-    /* 하단 "Hosted with Streamlit" 문구·메뉴·헤더 숨기기 */
-    footer {visibility: hidden;}
-    [data-testid="stToolbar"] {visibility: hidden;}
-    [data-testid="stStatusWidget"] {visibility: hidden;}
-    .stAppDeployButton {display: none;}
+    /* 위쪽 헤더 완전히 없애기 (흰 줄 제거) */
+    header[data-testid="stHeader"] {display: none !important;}
+    /* 하단 "Hosted with Streamlit" 문구·메뉴 숨기기 */
+    footer {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="stStatusWidget"] {display: none !important;}
+    .stAppDeployButton {display: none !important;}
     a[href*="streamlit.io"] {display: none !important;}
-    ._profileContainer_gzau3_53, ._container_gzau3_1,
-    ._viewerBadge_nim44_23, [class*="viewerBadge"] {display: none !important;}
+    [class*="viewerBadge"] {display: none !important;}
+    /* 본문 위쪽 여백 줄이기 */
+    .stMainBlockContainer, .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1rem !important;
+    }
+    /* 하단 입력창 영역도 검은색으로 (흰 줄 제거) */
+    [data-testid="stBottomBlockContainer"],
+    [data-testid="stBottom"] > div {
+        background-color: #0D0D0D !important;
+    }
     /* 전체 배경 검은색 */
-    .stApp {
-        background-color: #0D0D0D;
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+        background-color: #0D0D0D !important;
     }
     /* 모든 글자에 명조체 적용 */
     .stApp, .stApp p, .stApp li, .stApp span, .stApp label,
