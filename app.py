@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import time
 from pathlib import Path
 import streamlit as st
@@ -8,8 +9,11 @@ from google import genai
 from google.genai import types
 from google.genai import errors as genai_errors
 from anthropic import Anthropic
+from streamlit_local_storage import LocalStorage
 
 load_dotenv()
+
+STORAGE_KEY = "arcadia_chat_state"
 
 
 def get_api_key():
@@ -262,7 +266,73 @@ def rebuild_chat_with_facts():
     st.session_state.chat = new_chat(history=old_history)
 
 
+def save_to_browser():
+    """지금까지의 대화와 설정을 브라우저에 저장 (새로고침해도 유지).
+    내용이 바뀌었을 때만 실제로 저장해서 불필요한 반복을 막는다."""
+    data = json.dumps(
+        {
+            "messages": st.session_state.messages,
+            "custom_facts": st.session_state.get("custom_facts", []),
+        },
+        ensure_ascii=False,
+    )
+    if st.session_state.get("_last_saved") == data:
+        return
+    st.session_state["_last_saved"] = data
+    localS.setItem(STORAGE_KEY, data, key="save_chat")
+
+
+def genai_history_from_messages(messages):
+    """저장된 메시지들을 제미나이 대화 기록 형식으로 변환 (오프닝 제외)."""
+    return [
+        {"role": m["role"], "parts": [{"text": m["text"]}]}
+        for m in messages[1:]
+    ]
+
+
 st.set_page_config(page_title="핑크 로즈 오브 아르카디아", page_icon="🌹")
+
+localS = LocalStorage()
+
+# 브라우저에 저장된 이전 대화 복원 (새로고침해도 유지)
+def _parse_saved(value):
+    """저장된 값을 딕셔너리로 안전하게 해석. 형식이 이상하면 None."""
+    for _ in range(3):  # 이중 인코딩된 경우까지 대비해 몇 번 풀어본다
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str) and value:
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                return None
+        else:
+            return None
+    return value if isinstance(value, dict) else None
+
+
+if "messages" not in st.session_state:
+    restored = None
+    try:
+        restored = _parse_saved(localS.getItem(STORAGE_KEY))
+    except Exception:
+        restored = None
+
+    if restored and isinstance(restored.get("messages"), list) and restored["messages"]:
+        st.session_state.messages = restored["messages"]
+        facts = restored.get("custom_facts", [])
+        st.session_state.custom_facts = facts if isinstance(facts, list) else []
+        try:
+            st.session_state.chat = new_chat(
+                history=genai_history_from_messages(st.session_state.messages)
+            )
+        except Exception:
+            st.session_state.chat = new_chat()
+    else:
+        st.session_state.custom_facts = []
+        st.session_state.messages = [
+            {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
+        ]
+        st.session_state.chat = new_chat()
 
 st.markdown(
     """
@@ -392,9 +462,6 @@ with st.expander("등장인물 보기"):
             st.image(img_url, use_container_width=True)
             st.caption(char_name)
 
-if "custom_facts" not in st.session_state:
-    st.session_state.custom_facts = []
-
 with st.expander("📌 이야기 설정 고정하기"):
     st.caption(
         "결혼, 새 인물 등장처럼 앞으로 절대 바뀌면 안 되는 내용을 적어두면, "
@@ -415,12 +482,6 @@ with st.expander("📌 이야기 설정 고정하기"):
         st.session_state.custom_facts.append(new_fact.strip())
         rebuild_chat_with_facts()
         st.rerun()
-
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
-    ]
-    st.session_state.chat = new_chat()
 
 if st.button("처음부터 다시 시작"):
     st.session_state.messages = [
@@ -457,3 +518,6 @@ if user_input:
     else:
         # 응답 실패: 방금 넣은 내 메시지를 되돌려서 다시 시도할 수 있게 함
         st.session_state.messages.pop()
+
+# 화면을 다 그린 뒤, 현재 대화·설정을 브라우저에 저장 (바뀐 게 있을 때만)
+save_to_browser()
