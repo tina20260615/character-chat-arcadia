@@ -269,6 +269,14 @@ st.markdown(
     <style>
     /* 예쁜 명조체 폰트 불러오기 */
     @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&display=swap');
+    /* 하단 "Hosted with Streamlit" 문구·메뉴·헤더 숨기기 */
+    footer {visibility: hidden;}
+    [data-testid="stToolbar"] {visibility: hidden;}
+    [data-testid="stStatusWidget"] {visibility: hidden;}
+    .stAppDeployButton {display: none;}
+    a[href*="streamlit.io"] {display: none !important;}
+    ._profileContainer_gzau3_53, ._container_gzau3_1,
+    ._viewerBadge_nim44_23, [class*="viewerBadge"] {display: none !important;}
     /* 전체 배경 검은색 */
     .stApp {
         background-color: #0D0D0D;
