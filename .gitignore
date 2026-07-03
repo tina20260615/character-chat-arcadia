@@ -1,0 +1,14 @@
+# API 키 등 비밀 정보 - 절대 업로드 금지
+.env
+.streamlit/secrets.toml
+
+# 웹페이지 저장 찌꺼기
+제타_files/
+제타.html
+
+# 파이썬 캐시
+__pycache__/
+*.pyc
+
+# 로컬 실행용 (클라우드 배포엔 불필요)
+실행하기.bat
