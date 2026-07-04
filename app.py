@@ -459,7 +459,7 @@ st.markdown(
     <a href="#page-bottom" class="scroll-btn scroll-bottom" title="맨 아래로">▼</a>
     <style>
     .scroll-btn {
-        position: fixed; right: 14px; z-index: 9999;
+        position: fixed; left: 14px; z-index: 9999;
         width: 42px; height: 42px; border-radius: 50%;
         background-color: #3D2A5C; color: #F5F5F5 !important;
         border: 1px solid #6B4E9E;
