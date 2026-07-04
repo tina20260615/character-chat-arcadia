@@ -262,20 +262,20 @@ def call_gemini(user_input):
 
 
 def generate_reply(user_input):
-    # 1순위: 딥시크 (메인)
-    try:
-        return call_deepseek()
-    except Exception:
-        pass
-
-    # 2순위: 제미나이 (백업)
-    st.info("딥시크가 잠시 응답하지 못해서, 제미나이로 이어서 진행해볼게요.")
+    # 1순위: 제미나이 (메인, 무료)
     try:
         return call_gemini(user_input)
     except Exception:
+        pass
+
+    # 2순위: 딥시크 (백업)
+    st.info("제미나이가 잠시 응답하지 못해서, 딥시크로 이어서 진행해볼게요.")
+    try:
+        return call_deepseek()
+    except Exception:
         st.error(
-            "지금은 딥시크도 제미나이도 응답하지 못했어요. 잠시 후 다시 시도해주세요. "
-            "(딥시크 크레딧이 남아있는지, 제미나이 오늘 사용량이 남아있는지 확인해보세요.)"
+            "지금은 제미나이도 딥시크도 응답하지 못했어요. 잠시 후 다시 시도해주세요. "
+            "(제미나이 오늘 사용량이 남아있는지, 딥시크 크레딧이 남아있는지 확인해보세요.)"
         )
         return None
 
