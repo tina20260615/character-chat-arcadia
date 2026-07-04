@@ -277,7 +277,7 @@ def save_to_browser():
     localS.setItem(STORAGE_KEY, data, key="save_chat")
 
 
-st.set_page_config(page_title="핑크 로즈 오브 아르카디아", page_icon="🌹")
+st.set_page_config(page_title="아르카디아의 푸른 달", page_icon="🌙")
 
 localS = LocalStorage()
 
@@ -432,7 +432,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🌹 핑크 로즈 오브 아르카디아")
+st.title("아르카디아의 푸른 달")
 st.caption("당신은 '세레나 에델린'입니다. 이야기 속에서 원하는 대로 말하고 행동해보세요.")
 
 with st.expander("등장인물 보기"):
