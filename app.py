@@ -451,6 +451,30 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 맨 위 위치 표시 + 떠있는 스크롤 버튼(▲ 맨 위로 / ▼ 맨 아래로)
+st.markdown('<div id="page-top"></div>', unsafe_allow_html=True)
+st.markdown(
+    """
+    <a href="#page-top" class="scroll-btn scroll-top" title="맨 위로">▲</a>
+    <a href="#page-bottom" class="scroll-btn scroll-bottom" title="맨 아래로">▼</a>
+    <style>
+    .scroll-btn {
+        position: fixed; right: 14px; z-index: 9999;
+        width: 42px; height: 42px; border-radius: 50%;
+        background-color: #3D2A5C; color: #F5F5F5 !important;
+        border: 1px solid #6B4E9E;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px; text-decoration: none; line-height: 1;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .scroll-btn:hover { background-color: #5A3E8A; }
+    .scroll-top { bottom: 140px; }
+    .scroll-bottom { bottom: 90px; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("아르카디아의 푸른 달")
 st.caption("당신은 '세레나 에델린'입니다. 이야기 속에서 원하는 대로 말하고 행동해보세요.")
 
@@ -508,6 +532,9 @@ for i, msg in enumerate(st.session_state.messages):
     else:
         with st.chat_message("user", avatar=SERENA_AVATAR):
             st.write(msg["text"])
+
+# 맨 아래 위치 표시 (▼ 버튼이 여기로 이동)
+st.markdown('<div id="page-bottom"></div>', unsafe_allow_html=True)
 
 user_input = st.chat_input("세레나로서 말하거나 행동해보세요")
 if user_input:
