@@ -280,15 +280,74 @@ def generate_reply(user_input):
         return None
 
 
+EXPORT_TITLE = "《아르카디아의 푸른 달》 대화 기록"
+EXPORT_DIVIDER = "-----"
+CHARACTER_NAME_BY_AVATAR = {v: k for k, v in CHARACTER_IMAGES.items()}
+
+
 def build_export_text():
-    """지금까지의 대화를 사람이 읽기 좋은 텍스트로 정리."""
-    lines = ["《아르카디아의 푸른 달》 대화 기록", "=" * 30, ""]
+    """지금까지의 대화와 설정을 사람이 읽기 좋고, 다시 불러올 수도 있는 텍스트로 정리."""
+    lines = [EXPORT_TITLE, "=" * 30, ""]
+
+    facts = st.session_state.get("custom_facts", [])
+    if facts:
+        lines.append("[고정된 설정]")
+        for fact in facts:
+            lines.append(f"- {fact}")
+        lines.append(EXPORT_DIVIDER)
+
     for m in st.session_state.messages:
-        speaker = "세레나 (나)" if m["role"] == "user" else "이야기"
-        lines.append(f"[{speaker}]")
+        if m["role"] == "user":
+            header = "[세레나 (나)]"
+        else:
+            char_name = CHARACTER_NAME_BY_AVATAR.get(m.get("avatar"))
+            header = f"[이야기 - {char_name}]" if char_name else "[이야기]"
+        lines.append(header)
         lines.append(m["text"])
-        lines.append("")
+        lines.append(EXPORT_DIVIDER)
     return "\n".join(lines)
+
+
+def parse_import_text(content):
+    """내보내기 파일을 다시 대화·설정으로 되돌린다. 형식이 이상하면 None."""
+    try:
+        body = content.split(EXPORT_TITLE, 1)[-1]
+        # 맨 위 제목 밑줄(====) 줄 제거
+        body = re.sub(r"^\s*=+\s*\n", "", body.lstrip("\n"))
+        segments = [s for s in body.split(f"\n{EXPORT_DIVIDER}") if s.strip("\n")]
+
+        messages = []
+        custom_facts = []
+        for seg in segments:
+            seg = seg.strip("\n")
+            if "\n" in seg:
+                header, text = seg.split("\n", 1)
+            else:
+                header, text = seg, ""
+            header = header.strip()
+            text = text.strip("\n")
+
+            m = re.match(r"^\[(.+)\]$", header)
+            if not m:
+                continue
+            label = m.group(1)
+
+            if label == "고정된 설정":
+                custom_facts = [
+                    line[2:].strip() for line in text.split("\n") if line.startswith("- ")
+                ]
+            elif label.startswith("세레나"):
+                messages.append({"role": "user", "text": text})
+            else:
+                char_name = label.split(" - ", 1)[1] if " - " in label else None
+                avatar = CHARACTER_IMAGES.get(char_name, NARRATOR_AVATAR)
+                messages.append({"role": "model", "text": text, "avatar": avatar})
+
+        if not messages or messages[0]["role"] != "model":
+            return None
+        return {"messages": messages, "custom_facts": custom_facts}
+    except Exception:
+        return None
 
 
 def save_to_browser():
@@ -533,6 +592,23 @@ top_col3.download_button(
     mime="text/plain",
     help="지금까지의 대화를 텍스트 파일로 저장해요",
 )
+
+with st.expander("📤 파일에서 이어하기"):
+    st.caption(
+        "예전에 내보낸 대화 파일(.txt)을 넣으면, 그 시점부터 이어서 진행해요. "
+        "지금 하던 대화는 사라지니, 필요하면 먼저 내보내기로 저장해두세요."
+    )
+    uploaded = st.file_uploader("대화 파일 선택", type=["txt"], label_visibility="collapsed")
+    if uploaded is not None:
+        parsed = parse_import_text(uploaded.read().decode("utf-8"))
+        if parsed is None:
+            st.error("이 파일에서 대화를 읽어오지 못했어요. 이 앱으로 내보낸 파일이 맞는지 확인해주세요.")
+        else:
+            st.success(f"대화 {len(parsed['messages'])}개, 고정 설정 {len(parsed['custom_facts'])}개를 찾았어요.")
+            if st.button("이 파일로 이어하기"):
+                st.session_state.messages = parsed["messages"]
+                st.session_state.custom_facts = parsed["custom_facts"]
+                st.rerun()
 if edit_mode:
     st.caption("지우고 싶은 대화 아래의 '이 대화 삭제'를 누르세요. (내 말과 그 답변이 함께 지워져요)")
 
