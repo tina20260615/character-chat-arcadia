@@ -468,8 +468,8 @@ st.markdown(
         box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     }
     .scroll-btn:hover { background-color: #5A3E8A; }
-    .scroll-top { bottom: 140px; }
-    .scroll-bottom { bottom: 90px; }
+    .scroll-top { bottom: 205px; }
+    .scroll-bottom { bottom: 155px; }
     </style>
     """,
     unsafe_allow_html=True,
