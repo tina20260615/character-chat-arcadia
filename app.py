@@ -280,6 +280,17 @@ def generate_reply(user_input):
         return None
 
 
+def build_export_text():
+    """지금까지의 대화를 사람이 읽기 좋은 텍스트로 정리."""
+    lines = ["《아르카디아의 푸른 달》 대화 기록", "=" * 30, ""]
+    for m in st.session_state.messages:
+        speaker = "세레나 (나)" if m["role"] == "user" else "이야기"
+        lines.append(f"[{speaker}]")
+        lines.append(m["text"])
+        lines.append("")
+    return "\n".join(lines)
+
+
 def save_to_browser():
     """지금까지의 대화와 설정을 브라우저에 저장 (새로고침해도 유지).
     내용이 바뀌었을 때만 실제로 저장해서 불필요한 반복을 막는다."""
@@ -504,7 +515,7 @@ with st.expander("📌 이야기 설정 고정하기"):
         st.session_state.custom_facts.append(new_fact.strip())
         st.rerun()
 
-top_col1, top_col2 = st.columns(2)
+top_col1, top_col2, top_col3 = st.columns(3)
 if top_col1.button("처음부터 다시 시작"):
     st.session_state.messages = [
         {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
@@ -514,6 +525,14 @@ if top_col1.button("처음부터 다시 시작"):
 
 # 대화 편집 스위치: 켜면 각 대화 아래에 삭제 버튼이 나타남
 edit_mode = top_col2.toggle("🗑️ 대화 편집", help="켜면 특정 대화만 골라서 지울 수 있어요")
+
+top_col3.download_button(
+    "📥 대화 내보내기",
+    data=build_export_text(),
+    file_name="아르카디아의_푸른_달_대화.txt",
+    mime="text/plain",
+    help="지금까지의 대화를 텍스트 파일로 저장해요",
+)
 if edit_mode:
     st.caption("지우고 싶은 대화 아래의 '이 대화 삭제'를 누르세요. (내 말과 그 답변이 함께 지워져요)")
 
