@@ -1,14 +1,12 @@
 import os
 import re
 import json
-import time
 from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from google.genai import errors as genai_errors
-from anthropic import Anthropic
+from openai import OpenAI
 from streamlit_local_storage import LocalStorage
 
 load_dotenv()
@@ -16,32 +14,36 @@ load_dotenv()
 STORAGE_KEY = "arcadia_chat_state"
 
 
-def get_api_key():
+def get_gemini_key():
     try:
         return st.secrets["GEMINI_API_KEY"]
     except Exception:
         return os.getenv("GEMINI_API_KEY")
 
 
-def get_anthropic_key():
+def get_deepseek_key():
     try:
-        return st.secrets["ANTHROPIC_API_KEY"]
+        return st.secrets["DEEPSEEK_API_KEY"]
     except Exception:
-        return os.getenv("ANTHROPIC_API_KEY")
+        return os.getenv("DEEPSEEK_API_KEY")
 
 
-API_KEY = get_api_key()
-ANTHROPIC_API_KEY = get_anthropic_key()
-MODEL = "gemini-2.5-flash"
-CLAUDE_MODEL = "claude-sonnet-5"
+GEMINI_API_KEY = get_gemini_key()
+DEEPSEEK_API_KEY = get_deepseek_key()
+GEMINI_MODEL = "gemini-2.5-flash"
+DEEPSEEK_MODEL = "deepseek-v4-pro"
 
+# 메인: 딥시크 (OpenAI 호환 방식)
+if "deepseek_client" not in st.session_state:
+    st.session_state.deepseek_client = OpenAI(
+        api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com"
+    )
+deepseek_client = st.session_state.deepseek_client
+
+# 백업: 제미나이
 if "genai_client" not in st.session_state:
-    st.session_state.genai_client = genai.Client(api_key=API_KEY)
-client = st.session_state.genai_client
-
-if "anthropic_client" not in st.session_state:
-    st.session_state.anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
-anthropic_client = st.session_state.anthropic_client
+    st.session_state.genai_client = genai.Client(api_key=GEMINI_API_KEY)
+gemini_client = st.session_state.genai_client
 
 OPENING_SCENE = (
     "*새벽 두 시, 침대에 엎드려 휴대폰으로 로판 소설 《핑크 로즈 오브 아르카디아》를 읽던 "
@@ -198,72 +200,65 @@ def build_system_prompt():
     )
 
 
-def new_chat(history=None):
-    return client.chats.create(
-        model=MODEL,
+def build_deepseek_messages():
+    """지금까지의 대화를 딥시크(OpenAI 호환) 메시지 목록으로 변환.
+    st.session_state.messages 는 이미 맨 끝에 방금 넣은 플레이어 입력을 포함한다."""
+    system = (
+        build_system_prompt()
+        + "\n\n[참고] 플레이어는 이미 아래 오프닝 장면을 봤어. 그다음부터 이어서 진행해.\n"
+        + OPENING_SCENE
+    )
+    msgs = [{"role": "system", "content": system}]
+    for m in st.session_state.messages[1:]:
+        role = "assistant" if m["role"] == "model" else "user"
+        msgs.append({"role": role, "content": m["text"]})
+    return msgs
+
+
+def call_deepseek():
+    """메인 AI. 지금까지의 전체 대화를 넘겨서 다음 이야기를 받아온다."""
+    response = deepseek_client.chat.completions.create(
+        model=DEEPSEEK_MODEL,
+        max_tokens=2000,  # 딥시크는 답변 전 '생각'에도 토큰을 써서 여유있게 잡음
+        messages=build_deepseek_messages(),
+    )
+    return response.choices[0].message.content
+
+
+def call_gemini(user_input):
+    """백업 AI. 딥시크가 실패했을 때만 쓰인다. 전체 대화 맥락을 넘겨서 이어간다."""
+    history = [
+        {"role": m["role"], "parts": [{"text": m["text"]}]}
+        for m in st.session_state.messages[1:-1]  # 오프닝과 방금 넣은 입력은 제외
+    ]
+    chat = gemini_client.chats.create(
+        model=GEMINI_MODEL,
         config=types.GenerateContentConfig(
             system_instruction=build_system_prompt(),
             thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
         history=history,
     )
-
-
-def call_claude(user_input):
-    """클로드 호출. 실패하면 None을 돌려주고 앱을 멈추지 않음."""
-    try:
-        claude_system = (
-            build_system_prompt()
-            + "\n\n[참고] 플레이어는 이미 아래 오프닝 장면을 봤어. 그다음부터 이어서 진행해.\n"
-            + OPENING_SCENE
-        )
-        messages = [
-            {"role": "assistant" if m["role"] == "model" else "user", "content": m["text"]}
-            for m in st.session_state.messages[1:]
-        ]
-        messages.append({"role": "user", "content": user_input})
-        response = anthropic_client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=1024,
-            system=claude_system,
-            messages=messages,
-        )
-        return response.content[0].text
-    except Exception:
-        st.error(
-            "클로드도 지금 응답하지 못했어요. 클로드를 쓰려면 크레딧 충전이 필요할 수 있어요. "
-            "잠시 후 다시 시도해주세요."
-        )
-        return None
+    return chat.send_message(user_input).text
 
 
 def generate_reply(user_input):
-    # 이미 토큰을 다 써서 클로드로 넘어간 상태
-    if st.session_state.get("use_claude_fallback"):
-        return call_claude(user_input)
+    # 1순위: 딥시크 (메인)
+    try:
+        return call_deepseek()
+    except Exception:
+        pass
 
-    # 1단계: 제미나이 시도 (일시적 오류는 최대 3번까지 재시도)
-    for attempt in range(3):
-        try:
-            response = st.session_state.chat.send_message(user_input)
-            return response.text
-        except genai_errors.APIError as e:
-            if e.code == 429:  # 진짜 토큰 소진 → 클로드로 영구 전환
-                st.session_state.use_claude_fallback = True
-                st.info("제미나이 토큰을 다 써서, 이제부터는 클로드로 이어서 진행할게요.")
-                return call_claude(user_input)
-            # 그 외(503 등 일시적 오류)는 잠깐 쉬고 다시 시도
-            if attempt < 2:
-                time.sleep(1.5)
-
-    # 2단계: 제미나이가 계속 실패하면 클로드로 이번 답변만 시도
-    st.info("제미나이 응답이 계속 불안정해서, 이번엔 클로드로 이어서 진행해볼게요.")
-    return call_claude(user_input)
-
-
-def rebuild_chat_with_facts():
-    old_history = st.session_state.chat.get_history() if "chat" in st.session_state else None
-    st.session_state.chat = new_chat(history=old_history)
+    # 2순위: 제미나이 (백업)
+    st.info("딥시크가 잠시 응답하지 못해서, 제미나이로 이어서 진행해볼게요.")
+    try:
+        return call_gemini(user_input)
+    except Exception:
+        st.error(
+            "지금은 딥시크도 제미나이도 응답하지 못했어요. 잠시 후 다시 시도해주세요. "
+            "(딥시크 크레딧이 남아있는지, 제미나이 오늘 사용량이 남아있는지 확인해보세요.)"
+        )
+        return None
 
 
 def save_to_browser():
@@ -280,14 +275,6 @@ def save_to_browser():
         return
     st.session_state["_last_saved"] = data
     localS.setItem(STORAGE_KEY, data, key="save_chat")
-
-
-def genai_history_from_messages(messages):
-    """저장된 메시지들을 제미나이 대화 기록 형식으로 변환 (오프닝 제외)."""
-    return [
-        {"role": m["role"], "parts": [{"text": m["text"]}]}
-        for m in messages[1:]
-    ]
 
 
 st.set_page_config(page_title="핑크 로즈 오브 아르카디아", page_icon="🌹")
@@ -321,18 +308,11 @@ if "messages" not in st.session_state:
         st.session_state.messages = restored["messages"]
         facts = restored.get("custom_facts", [])
         st.session_state.custom_facts = facts if isinstance(facts, list) else []
-        try:
-            st.session_state.chat = new_chat(
-                history=genai_history_from_messages(st.session_state.messages)
-            )
-        except Exception:
-            st.session_state.chat = new_chat()
     else:
         st.session_state.custom_facts = []
         st.session_state.messages = [
             {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
         ]
-        st.session_state.chat = new_chat()
 
 st.markdown(
     """
@@ -472,7 +452,6 @@ with st.expander("📌 이야기 설정 고정하기"):
         fcol1.write(f"- {fact}")
         if fcol2.button("삭제", key=f"del_fact_{i}"):
             st.session_state.custom_facts.pop(i)
-            rebuild_chat_with_facts()
             st.rerun()
 
     new_fact = st.text_input(
@@ -480,7 +459,6 @@ with st.expander("📌 이야기 설정 고정하기"):
     )
     if st.button("설정 추가") and new_fact.strip():
         st.session_state.custom_facts.append(new_fact.strip())
-        rebuild_chat_with_facts()
         st.rerun()
 
 if st.button("처음부터 다시 시작"):
@@ -488,7 +466,6 @@ if st.button("처음부터 다시 시작"):
         {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
     ]
     st.session_state.custom_facts = []
-    st.session_state.chat = new_chat()
     st.rerun()
 
 for msg in st.session_state.messages:

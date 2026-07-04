@@ -1,5 +1,5 @@
 streamlit
 google-genai
-anthropic
+openai
 python-dotenv
 streamlit-local-storage
