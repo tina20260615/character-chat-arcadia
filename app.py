@@ -461,17 +461,31 @@ with st.expander("📌 이야기 설정 고정하기"):
         st.session_state.custom_facts.append(new_fact.strip())
         st.rerun()
 
-if st.button("처음부터 다시 시작"):
+top_col1, top_col2 = st.columns(2)
+if top_col1.button("처음부터 다시 시작"):
     st.session_state.messages = [
         {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
     ]
     st.session_state.custom_facts = []
     st.rerun()
 
-for msg in st.session_state.messages:
+# 대화 편집 스위치: 켜면 각 대화 아래에 삭제 버튼이 나타남
+edit_mode = top_col2.toggle("🗑️ 대화 편집", help="켜면 특정 대화만 골라서 지울 수 있어요")
+if edit_mode:
+    st.caption("지우고 싶은 대화 아래의 '이 대화 삭제'를 누르세요. (내 말과 그 답변이 함께 지워져요)")
+
+for i, msg in enumerate(st.session_state.messages):
     if msg["role"] == "model":
         with st.chat_message("assistant", avatar=msg["avatar"]):
             st.write(msg["text"])
+            # 편집 스위치가 켜졌을 때만, 오프닝을 제외한 답변에 삭제 버튼 표시
+            if edit_mode and i > 0:
+                if st.button("🗑️ 이 대화 삭제", key=f"del_msg_{i}"):
+                    # 이 답변과 바로 앞의 내 입력을 한 쌍으로 삭제
+                    del st.session_state.messages[i]
+                    if i - 1 >= 1 and st.session_state.messages[i - 1]["role"] == "user":
+                        del st.session_state.messages[i - 1]
+                    st.rerun()
     else:
         with st.chat_message("user", avatar=SERENA_AVATAR):
             st.write(msg["text"])
