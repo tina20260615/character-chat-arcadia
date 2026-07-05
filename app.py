@@ -165,6 +165,19 @@ SYSTEM_PROMPT = """너는 로맨스 판타지 소설 《핑크 로즈 오브 아
 - 과도한 말줄임표("...", "…")나 인터넷체 끊어쓰기를 남발하지 말고 자연스러운 문장으로 써.
 - 세계관에 맞지 않는 현실 요소(현대 물건, 현대어 등)를 등장시키지 마.
 
+[이야기 종결 금지 - 절대 규칙]
+너는 이 이야기를 스스로 끝내거나, 요약하거나, 완결짓지 마. 인물들의 갈등이 해소되거나
+행복해 보이는 순간이 와도, "여기서 마무리", "이 인물의 이야기는 여기까지", "더 이상 이어갈
+수 없다" 같은 판단을 절대 내리지 마. 그건 결말이 아니라 새로운 사건·갈등·관계 변화로 이어지는
+하나의 장면일 뿐이다. 이야기는 플레이어가 직접 "처음부터 다시 시작"을 누르기 전까지 끝나지
+않고 계속된다. 매 답변은 반드시 다음 상황으로 넘어갈 여지(새로운 사건, 인물의 행동, 질문
+등)를 남기고 끝내라. "끝", "The End", 후기·소감 같은 마무리 문장을 절대 쓰지 마.
+
+[플레이어가 침묵할 때 (입력이 "..." 또는 "…")]
+플레이어가 아무 말도, 행동도 하지 않고 침묵하겠다는 뜻이다. 너는 세레나의 대사나 행동을
+절대 대신 만들지 말고, 그 침묵 속에서 다른 등장인물이 먼저 말을 걸거나 행동해서 상황을
+자연스럽게 이어가라.
+
 [진행 규칙]
 - 행동·표정 같은 지문은 *별표 안에*, 대사는 큰따옴표로 구분해서 써.
 - 매 답변 끝에는 플레이어가 다시 반응할 수 있는 여지를 남겨.
@@ -219,6 +232,20 @@ def build_system_prompt():
     )
 
 
+PASS_INPUT_RE = re.compile(r"^[.…]+$")  # "..." 또는 "…"만 입력한 경우
+
+PASS_INSTRUCTION = (
+    "[진행 지시] 플레이어(세레나)는 이번 턴에 아무 말도, 어떤 행동도 하지 않고 침묵한다. "
+    "세레나의 대사나 행동을 절대 대신 만들지 말고, 그 침묵 속에서 다른 등장인물이 먼저 "
+    "말을 걸거나 행동해서 상황을 자연스럽게 이어가."
+)
+
+
+def api_content_for(text):
+    """플레이어 입력을 API로 보낼 실제 내용으로 변환. '...'만 입력하면 침묵 지시문으로 바꾼다."""
+    return PASS_INSTRUCTION if PASS_INPUT_RE.match(text.strip()) else text
+
+
 def build_deepseek_messages():
     """지금까지의 대화를 딥시크(OpenAI 호환) 메시지 목록으로 변환.
     st.session_state.messages 는 이미 맨 끝에 방금 넣은 플레이어 입력을 포함한다."""
@@ -226,11 +253,16 @@ def build_deepseek_messages():
         build_system_prompt()
         + "\n\n[참고] 플레이어는 이미 아래 오프닝 장면을 봤어. 그다음부터 이어서 진행해.\n"
         + OPENING_SCENE
+        + "\n\n[다시 한번 강조] 이야기를 절대 스스로 완결짓거나 종료하지 마. 인물이 행복해 "
+        + "보이거나 갈등이 풀린 순간에도 그건 결말이 아니라 다음 장면으로 이어지는 한 순간일 "
+        + "뿐이다. 항상 다음 전개로 넘어갈 여지를 남기고 답변을 끝내."
     )
     msgs = [{"role": "system", "content": system}]
     for m in st.session_state.messages[1:]:
-        role = "assistant" if m["role"] == "model" else "user"
-        msgs.append({"role": role, "content": m["text"]})
+        if m["role"] == "user":
+            msgs.append({"role": "user", "content": api_content_for(m["text"])})
+        else:
+            msgs.append({"role": "assistant", "content": m["text"]})
     return msgs
 
 
@@ -247,7 +279,12 @@ def call_deepseek():
 def call_gemini(user_input):
     """백업 AI. 딥시크가 실패했을 때만 쓰인다. 전체 대화 맥락을 넘겨서 이어간다."""
     history = [
-        {"role": m["role"], "parts": [{"text": m["text"]}]}
+        {
+            "role": m["role"],
+            "parts": [
+                {"text": api_content_for(m["text"]) if m["role"] == "user" else m["text"]}
+            ],
+        }
         for m in st.session_state.messages[1:-1]  # 오프닝과 방금 넣은 입력은 제외
     ]
     chat = gemini_client.chats.create(
@@ -258,7 +295,7 @@ def call_gemini(user_input):
         ),
         history=history,
     )
-    return chat.send_message(user_input).text
+    return chat.send_message(api_content_for(user_input)).text
 
 
 def generate_reply(user_input):
