@@ -771,14 +771,10 @@ for i, msg in enumerate(st.session_state.messages):
 # 맨 아래 위치 표시 (▼ 버튼이 여기로 이동)
 st.markdown('<div id="page-bottom"></div>', unsafe_allow_html=True)
 
-user_input = st.chat_input("세레나로서 말하거나 행동해보세요")
-if user_input:
-    st.session_state.messages.append({"role": "user", "text": user_input})
-    with st.chat_message("user", avatar=SERENA_AVATAR):
-        st.write(user_input)
-
+def handle_reply(pending_input):
+    """AI 답변을 받아 채팅에 추가. 실패하면 방금 넣은 내 메시지를 되돌린다."""
     with st.spinner("이야기가 이어지는 중..."):
-        raw_reply = generate_reply(user_input)
+        raw_reply = generate_reply(pending_input)
 
     if raw_reply:
         avatar, reply_text = split_character_tag(raw_reply)
@@ -788,8 +784,24 @@ if user_input:
             {"role": "model", "text": reply_text, "avatar": avatar}
         )
     else:
-        # 응답 실패: 방금 넣은 내 메시지를 되돌려서 다시 시도할 수 있게 함
         st.session_state.messages.pop()
+    save_to_browser()
+
+
+# 답변을 못 받은 채 남은 내 메시지가 있으면(응답 기다리는 중 앱이 백그라운드로 밀려나
+# 연결이 끊긴 경우) 다시 입력할 필요 없이 자동으로 이어서 답변을 받아온다.
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    handle_reply(st.session_state.messages[-1]["text"])
+
+user_input = st.chat_input("세레나로서 말하거나 행동해보세요")
+if user_input:
+    st.session_state.messages.append({"role": "user", "text": user_input})
+    with st.chat_message("user", avatar=SERENA_AVATAR):
+        st.write(user_input)
+    # AI 응답을 기다리기 전에 먼저 저장 — 기다리는 동안 연결이 끊겨도 내 입력은 남아있게
+    save_to_browser()
+
+    handle_reply(user_input)
 
 # 화면을 다 그린 뒤, 현재 대화·설정을 브라우저에 저장 (바뀐 게 있을 때만)
 save_to_browser()
