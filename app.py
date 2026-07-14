@@ -301,6 +301,15 @@ def build_system_prompt():
             "대사를 절대 만들지 말고, 이야기 진행에 반드시 반영해.\n"
             + facts_text
         )
+    summary = st.session_state.get("story_summary", "")
+    if summary:
+        base += (
+            "\n\n[이전 이야기 요약 - 지금 보여주는 최근 대화보다 앞서 있었던 일]\n"
+            "아래는 지금부터 보여주는 최근 대화보다 더 예전에 있었던 사건들을 요약한 것이야. "
+            "최근 대화에서 답을 찾을 수 없는 부분(누가 무슨 말을 했었는지, 어떤 일이 있었는지 "
+            "등)은 이 요약을 근거로 삼아 일관되게 이어가.\n"
+            + summary
+        )
     return base + REINFORCEMENT
 
 
@@ -318,6 +327,63 @@ def api_content_for(text):
     return PASS_INSTRUCTION if PASS_INPUT_RE.match(text.strip()) else text
 
 
+# 매 턴 AI에게 그대로(원문 그대로) 보내는 최근 대화 기록의 최대 개수(내 입력 + AI 답변 합쳐서).
+# 이보다 오래된 부분은 원문 대신 아래 "이야기 요약"으로 압축해서 보낸다 — 그래서 이야기가
+# 아무리 길어져도 매 턴 보내는 양이 무한정 늘어나지 않으면서도, 예전 내용을 완전히 잊지는 않는다.
+HISTORY_WINDOW = 50
+# 요약 안 된 오래된 대화가 이만큼 쌓이면, 그 부분을 한 번에 요약해서 "이야기 요약"에 합친다.
+SUMMARY_CHUNK = 30
+
+
+def update_story_summary():
+    """최근 창(HISTORY_WINDOW) 밖으로 밀려난 오래된 대화를, SUMMARY_CHUNK만큼 쌓일 때마다
+    요약해서 st.session_state.story_summary에 누적한다. 실패해도 다음 턴에 다시 시도되므로
+    조용히 넘어간다."""
+    msgs = st.session_state.messages[1:]  # 오프닝 제외
+    start = st.session_state.get("summarized_up_to", 0)
+    unsummarized_old = len(msgs) - HISTORY_WINDOW - start
+    if unsummarized_old < SUMMARY_CHUNK:
+        return
+
+    chunk = msgs[start:start + SUMMARY_CHUNK]
+    chunk_text = "\n".join(
+        ("[세레나] " if m["role"] == "user" else "[이야기] ") + m["text"] for m in chunk
+    )
+    prev_summary = st.session_state.get("story_summary", "")
+    prompt = (
+        "다음은 로맨스 판타지 이야기의 일부야. 이후 이야기를 계속 이어가는 데 필요한 핵심 "
+        "사건, 인물 관계의 변화, 새로 확정된 설정만 한국어로 간결하게 정리해줘. 대사를 그대로 "
+        "옮기지 말고 사실 위주로, 이전 요약과 이어지도록 하나의 요약으로 합쳐서 써.\n\n"
+        + (f"[지금까지의 요약]\n{prev_summary}\n\n" if prev_summary else "")
+        + f"[새로 요약할 부분]\n{chunk_text}"
+    )
+    new_summary = None
+    try:
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            ),
+        )
+        new_summary = response.text
+    except Exception:
+        # 제미나이가 안 되면(할당량 초과 등) 딥시크로 한 번 더 시도해본다.
+        try:
+            response = deepseek_client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                max_tokens=1000,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            new_summary = response.choices[0].message.content
+        except Exception:
+            return
+    if not new_summary:
+        return
+    st.session_state.story_summary = new_summary
+    st.session_state.summarized_up_to = start + SUMMARY_CHUNK
+
+
 def build_deepseek_messages():
     """지금까지의 대화를 딥시크(OpenAI 호환) 메시지 목록으로 변환.
     st.session_state.messages 는 이미 맨 끝에 방금 넣은 플레이어 입력을 포함한다."""
@@ -327,7 +393,7 @@ def build_deepseek_messages():
         + OPENING_SCENE
     )
     msgs = [{"role": "system", "content": system}]
-    for m in st.session_state.messages[1:]:
+    for m in st.session_state.messages[1:][-HISTORY_WINDOW:]:
         if m["role"] == "user":
             msgs.append({"role": "user", "content": api_content_for(m["text"])})
         else:
@@ -346,7 +412,7 @@ def call_deepseek():
 
 
 def call_gemini(user_input):
-    """백업 AI. 딥시크가 실패했을 때만 쓰인다. 전체 대화 맥락을 넘겨서 이어간다."""
+    """메인 AI(무료). 최근 대화만 원문으로 넘기고, 그 이전은 이야기 요약으로 대체한다."""
     history = [
         {
             "role": m["role"],
@@ -354,7 +420,7 @@ def call_gemini(user_input):
                 {"text": api_content_for(m["text"]) if m["role"] == "user" else m["text"]}
             ],
         }
-        for m in st.session_state.messages[1:-1]  # 오프닝과 방금 넣은 입력은 제외
+        for m in st.session_state.messages[1:-1][-HISTORY_WINDOW:]  # 오프닝과 방금 넣은 입력은 제외
     ]
     chat = gemini_client.chats.create(
         model=GEMINI_MODEL,
@@ -463,6 +529,8 @@ def save_to_browser():
         {
             "messages": st.session_state.messages,
             "custom_facts": st.session_state.get("custom_facts", []),
+            "story_summary": st.session_state.get("story_summary", ""),
+            "summarized_up_to": st.session_state.get("summarized_up_to", 0),
         },
         ensure_ascii=False,
     )
@@ -507,8 +575,12 @@ if "messages" not in st.session_state:
         st.session_state.messages = restored["messages"]
         facts = restored.get("custom_facts", [])
         st.session_state.custom_facts = facts if isinstance(facts, list) else []
+        st.session_state.story_summary = restored.get("story_summary", "") or ""
+        st.session_state.summarized_up_to = restored.get("summarized_up_to", 0) or 0
     else:
         st.session_state.custom_facts = []
+        st.session_state.story_summary = ""
+        st.session_state.summarized_up_to = 0
         st.session_state.messages = [
             {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
         ]
@@ -684,12 +756,23 @@ with st.expander("📌 이야기 설정 고정하기"):
         st.session_state.custom_facts.append(new_fact.strip())
         st.rerun()
 
+if st.session_state.get("story_summary"):
+    with st.expander("🧵 예전 대화 요약 보기"):
+        st.caption(
+            "대화가 길어지면, 최근 대화 창(최대 50개) 밖으로 밀려난 예전 내용을 이렇게 "
+            "요약해서 기억해요. 빠지면 안 되는 내용이 있으면 위의 '이야기 설정 고정하기'에 "
+            "따로 적어두세요."
+        )
+        st.write(st.session_state.story_summary)
+
 top_col1, top_col2, top_col3 = st.columns(3)
 if top_col1.button("처음부터 다시 시작"):
     st.session_state.messages = [
         {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
     ]
     st.session_state.custom_facts = []
+    st.session_state.story_summary = ""
+    st.session_state.summarized_up_to = 0
     st.rerun()
 
 # 대화 편집 스위치: 켜면 각 대화 아래에 삭제 버튼이 나타남
@@ -718,6 +801,9 @@ with st.expander("📤 파일에서 이어하기"):
             if st.button("이 파일로 이어하기"):
                 st.session_state.messages = parsed["messages"]
                 st.session_state.custom_facts = parsed["custom_facts"]
+                # 불러온 대화는 아직 요약이 없으니 새로 쌓이는 만큼부터 요약을 시작한다.
+                st.session_state.story_summary = ""
+                st.session_state.summarized_up_to = 0
                 st.rerun()
 if edit_mode:
     st.caption("지우고 싶은 대화 아래의 '이 대화 삭제'를 누르세요. (내 말과 그 답변이 함께 지워져요)")
@@ -753,6 +839,7 @@ def handle_reply(pending_input):
         st.session_state.messages.append(
             {"role": "model", "text": reply_text, "avatar": avatar}
         )
+        update_story_summary()
     else:
         st.session_state.messages.pop()
     save_to_browser()
