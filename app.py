@@ -269,16 +269,28 @@ def resolve_character_avatar(name):
     for full_name, avatar in CHARACTER_IMAGES.items():
         if name in full_name or full_name in name:
             return avatar
-    return NARRATOR_AVATAR
+    return None
+
+
+def guess_dominant_character(text):
+    """AI가 [등장인물: 없음]으로 도망쳤거나 이름을 잘못 써서 매칭에 실패했을 때, 본문에서
+    가장 먼저 등장하는 인물 이름으로 추정해본다(안전장치)."""
+    best_name, best_pos = None, None
+    for full_name in CHARACTER_IMAGES:
+        pos = text.find(full_name)
+        if pos != -1 and (best_pos is None or pos < best_pos):
+            best_name, best_pos = full_name, pos
+    return CHARACTER_IMAGES.get(best_name)
 
 
 def split_character_tag(reply):
     match = CHARACTER_TAG_RE.match(reply)
     if not match:
-        return NARRATOR_AVATAR, reply
+        return guess_dominant_character(reply) or NARRATOR_AVATAR, reply
     name = match.group(1).strip()
     text = reply[match.end():]
-    return resolve_character_avatar(name), text
+    avatar = resolve_character_avatar(name) or guess_dominant_character(text) or NARRATOR_AVATAR
+    return avatar, text
 
 
 REINFORCEMENT = (
