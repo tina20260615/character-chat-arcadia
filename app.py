@@ -430,6 +430,8 @@ def build_export_text():
 def parse_import_text(content):
     """내보내기 파일을 다시 대화·설정으로 되돌린다. 형식이 이상하면 None."""
     try:
+        # 메모장 등으로 저장하면서 줄바꿈이 윈도우 방식(\r\n)으로 바뀌어도 문제없이 읽히게
+        content = content.replace("\r\n", "\n").replace("\r", "\n")
         body = content.split(EXPORT_TITLE, 1)[-1]
         # 맨 위 제목 밑줄(====) 줄 제거
         body = re.sub(r"^\s*=+\s*\n", "", body.lstrip("\n"))
