@@ -3,6 +3,7 @@ import re
 import json
 from pathlib import Path
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -783,6 +784,31 @@ def handle_reply(pending_input):
 # 연결이 끊긴 경우) 다시 입력할 필요 없이 자동으로 이어서 답변을 받아온다.
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     handle_reply(st.session_state.messages[-1]["text"])
+
+# 엔터키로 실수로(또는 타이핑 도중) 전송되는 것을 막고, 화살표 버튼을 눌러야만
+# 전송되게 함. 한글 입력 중 엔터를 쳐서 말이 중간에 끊긴 채 전송되던 문제 방지.
+components.html(
+    """
+    <script>
+    (function() {
+        var parentWin = window.parent;
+        if (parentWin.__serenaEnterBlockerAttached) { return; }
+        parentWin.__serenaEnterBlockerAttached = true;
+        parentWin.document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                var t = e.target;
+                if (t && t.tagName === 'TEXTAREA' && t.placeholder === '세레나로서 말하거나 행동해보세요') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
+                }
+            }
+        }, true);
+    })();
+    </script>
+    """,
+    height=0,
+)
 
 user_input = st.chat_input("세레나로서 말하거나 행동해보세요")
 if user_input:
