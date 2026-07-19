@@ -729,13 +729,23 @@ with st.expander("📌 이야기 설정 고정하기"):
         st.session_state.custom_facts.append(new_fact.strip())
         st.rerun()
 
+@st.dialog("정말 처음부터 다시 시작할까요?")
+def confirm_restart():
+    st.write("지금까지의 대화가 전부 사라져요. 되돌릴 수 없어요.")
+    dcol1, dcol2 = st.columns(2)
+    if dcol1.button("취소", use_container_width=True):
+        st.rerun()
+    if dcol2.button("네, 초기화할게요", type="primary", use_container_width=True):
+        st.session_state.messages = [
+            {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
+        ]
+        st.session_state.custom_facts = []
+        st.rerun()
+
+
 top_col1, top_col2, top_col3 = st.columns(3)
 if top_col1.button("처음부터 다시 시작"):
-    st.session_state.messages = [
-        {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
-    ]
-    st.session_state.custom_facts = []
-    st.rerun()
+    confirm_restart()
 
 # 대화 편집 스위치: 켜면 각 대화 아래에 삭제 버튼이 나타남
 edit_mode = top_col2.toggle("🗑️ 대화 편집", help="켜면 특정 대화만 골라서 지울 수 있어요")
