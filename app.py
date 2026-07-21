@@ -495,6 +495,10 @@ def parse_import_text(content):
 def save_to_browser():
     """지금까지의 대화와 설정을 브라우저에 저장 (새로고침해도 유지).
     내용이 바뀌었을 때만 실제로 저장해서 불필요한 반복을 막는다."""
+    if not st.session_state.get("_save_enabled", True):
+        # 저장된 대화를 아직 못 불러왔을 수 있는 상태 — 실제 사용자 행동이 있기 전까지는
+        # 저장을 건너뛰어서, 기존에 저장돼 있던 대화를 빈 상태로 덮어쓰지 않는다.
+        return
     data = json.dumps(
         {
             "messages": st.session_state.messages,
@@ -543,7 +547,13 @@ if "messages" not in st.session_state:
         st.session_state.messages = restored["messages"]
         facts = restored.get("custom_facts", [])
         st.session_state.custom_facts = facts if isinstance(facts, list) else []
+        st.session_state["_save_enabled"] = True
     else:
+        # 브라우저 저장 컴포넌트가 첫 실행에서는 아직 실제 값을 못 돌려주고 None을 주는
+        # 경우가 있다(느린 네트워크·기기에서 더 잦음). 이걸 "저장된 대화 없음"으로 착각해서
+        # 진짜 대화가 있는데도 빈 상태로 덮어써버리면 안 되니, 사용자가 실제로 무언가
+        # 하기 전까지는(메시지 전송, 설정 추가 등) 저장을 미룬다.
+        st.session_state["_save_enabled"] = False
         st.session_state.custom_facts = []
         st.session_state.messages = [
             {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
@@ -720,6 +730,7 @@ with st.expander("📌 이야기 설정 고정하기"):
         fcol1.write(f"- {fact}")
         if fcol2.button("삭제", key=f"del_fact_{i}"):
             st.session_state.custom_facts.pop(i)
+            st.session_state["_save_enabled"] = True
             st.rerun()
 
     new_fact = st.text_input(
@@ -727,6 +738,7 @@ with st.expander("📌 이야기 설정 고정하기"):
     )
     if st.button("설정 추가") and new_fact.strip():
         st.session_state.custom_facts.append(new_fact.strip())
+        st.session_state["_save_enabled"] = True
         st.rerun()
 
 @st.dialog("정말 처음부터 다시 시작할까요?")
@@ -740,6 +752,7 @@ def confirm_restart():
             {"role": "model", "text": OPENING_SCENE, "avatar": NARRATOR_AVATAR}
         ]
         st.session_state.custom_facts = []
+        st.session_state["_save_enabled"] = True
         st.rerun()
 
 
@@ -773,6 +786,7 @@ with st.expander("📤 파일에서 이어하기"):
             if st.button("이 파일로 이어하기"):
                 st.session_state.messages = parsed["messages"]
                 st.session_state.custom_facts = parsed["custom_facts"]
+                st.session_state["_save_enabled"] = True
                 st.rerun()
 if edit_mode:
     st.caption("지우고 싶은 대화 아래의 '이 대화 삭제'를 누르세요. (내 말과 그 답변이 함께 지워져요)")
@@ -788,6 +802,7 @@ for i, msg in enumerate(st.session_state.messages):
                     del st.session_state.messages[i]
                     if i - 1 >= 1 and st.session_state.messages[i - 1]["role"] == "user":
                         del st.session_state.messages[i - 1]
+                    st.session_state["_save_enabled"] = True
                     st.rerun()
     else:
         with st.chat_message("user", avatar=SERENA_AVATAR):
@@ -845,6 +860,7 @@ components.html(
 
 user_input = st.chat_input("세레나로서 말하거나 행동해보세요")
 if user_input:
+    st.session_state["_save_enabled"] = True
     st.session_state.messages.append({"role": "user", "text": user_input})
     with st.chat_message("user", avatar=SERENA_AVATAR):
         st.write(user_input)
